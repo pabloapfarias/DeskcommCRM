@@ -28,6 +28,16 @@ export const TOOLS_COMERCIO = declararTools([
     pacotes: ["vender", "atender"],
   },
   {
+    name: "crm_search_marketplace",
+    category: "read",
+    rotulo: "Buscar lojas no marketplace",
+    explicacao:
+      "Consulta a vitrine pública atual do eMenu/eBig Food por cidade, nome ou categoria e devolve as lojas publicadas e seus links públicos de contato.",
+    oQueToca: "Marketplace e parceiros",
+    risco: "seguro",
+    pacotes: ["atender", "vender"],
+  },
+  {
     name: "crm_list_privacy_requests",
     category: "read",
     rotulo: "Ver pedidos de privacidade",
