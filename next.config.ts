@@ -7,7 +7,31 @@ import type { NextConfig } from "next";
  *  - INP < 200ms p75
  *  - Initial bundle /app/inbox < 250KB gzipped
  */
+const allowedDevOrigins =
+  process.env.NODE_ENV === "development"
+    ? Array.from(
+        new Set(
+          [
+            "10.10.110.123",
+            process.env.DOMAIN?.trim(),
+            process.env.NEXT_PUBLIC_APP_URL?.trim(),
+          ]
+            .filter((value): value is string => Boolean(value))
+            .map((value) => {
+              try {
+                return new URL(
+                  value.includes("://") ? value : "http://" + value,
+                ).hostname;
+              } catch {
+                return value;
+              }
+            }),
+        ),
+      )
+    : undefined;
+
 const nextConfig: NextConfig = {
+  ...(allowedDevOrigins ? { allowedDevOrigins } : {}),
   // Self-host: gera .next/standalone pro container Docker (node server.js) — é
   // o que o estágio `runner` do Dockerfile copia, então é o modo de build deste
   // repositório. O ramo de `process.env.VERCEL` é resíduo defensivo, não um modo
