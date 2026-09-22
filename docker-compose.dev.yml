@@ -38,7 +38,10 @@ services:
     environment:
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
-    mem_limit: 2g
+    # O Next/Turbopack em modo desenvolvimento recompila rotas sob demanda e
+    # pode ultrapassar 2 GiB durante uma sessão de trabalho. O CT tem memória
+    # disponível; mantenha folga para evitar OOM e 502 no proxy.
+    mem_limit: 8g
 
   worker:
     build:
