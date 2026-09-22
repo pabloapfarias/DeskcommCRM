@@ -1651,6 +1651,19 @@ export const DICIONARIO: Traducoes = {
   Resultado: { es: "Resultado" },
   "Nenhum teste executado ainda.": { es: "Todavía no se ejecutó ninguna prueba." },
   "Executando dry-run…": { es: "Ejecutando dry-run…" },
+  "salvo fora do catálogo": { es: "guardado fuera del catálogo" },
+  "Não foi possível carregar o catálogo de modelos. O identificador salvo ainda pode ser testado.": {
+    es: "No se pudo cargar el catálogo de modelos. El identificador guardado todavía se puede probar.",
+  },
+  "O modelo salvo não está no catálogo atual. Ele continua disponível para esta versão até o catálogo ser atualizado.": {
+    es: "El modelo guardado no está en el catálogo actual. Sigue disponible para esta versión hasta que se actualice el catálogo.",
+  },
+  "O teste falhou.": { es: "La prueba falló." },
+  "Run ID": { es: "ID de ejecución" },
+  "Request ID": { es: "ID de solicitud" },
+  "Abra Execuções para ver o diagnóstico completo registrado no log do modelo.": {
+    es: "Abre Ejecuciones para ver el diagnóstico completo registrado en el registro del modelo.",
+  },
   "Stub: o runtime real é entregue na S-13.08. O trace abaixo é simulado.": {
     es: "Stub: el runtime real se entrega en S-13.08. La traza de abajo es simulada.",
   },

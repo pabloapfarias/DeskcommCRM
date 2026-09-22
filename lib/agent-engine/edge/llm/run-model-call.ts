@@ -25,7 +25,7 @@ import { scrubMessage } from '@/lib/sentry/scrub';
 
 import type { Logger } from '../../obs/logger';
 import { decidirParaOSeam } from './binding-do-ponto';
-import { resolveOrgLlmConfig, type LlmEdgeConfig, type OrcamentoDaOrg } from './credentials';
+import { LlmNotConfiguredError, resolveOrgLlmConfig, type LlmEdgeConfig, type OrcamentoDaOrg } from './credentials';
 import {
   AVISO_CORPO,
   AVISO_TITULO,
@@ -504,29 +504,80 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   // lido pela fábrica `deepseek`, então os outros provedores não têm como mudar.
   const registry = deps.registry ?? createDefaultRegistry({ deepseekThinking: cfg.deepseekThinking });
   const purpose = input.purpose ?? 'agent_turn';
+  const preflightStartedAt = Date.now();
+
+  // A resolução acontece antes do `generateText`. Sem este registro separado,
+  // erros como credencial ausente, modelo não habilitado ou provider inválido
+  // subiam para o preview sem deixar linha em `llm_calls` — justamente a tabela
+  // que a tela de Execuções consulta. Os valores de fallback abaixo são apenas
+  // rótulos de diagnóstico, nunca segredos.
+  const registrarFalhaDeResolucao = async (
+    erro: unknown,
+    contexto: { provider?: string; model?: string | null; origem?: string } = {},
+  ): Promise<void> => {
+    const provider = contexto.provider ?? input.llmOverride?.provider ?? 'desconhecido';
+    const model = contexto.model ?? input.model ?? 'modelo_nao_definido';
+    const origem = contexto.origem ?? 'resolucao';
+    await registrarFalha(db, {
+      input,
+      purpose,
+      provider,
+      model,
+      origem,
+      latencyMs: Date.now() - preflightStartedAt,
+      erro,
+    }).catch(() => {
+      // A linha de diagnóstico é best-effort; a falha original continua sendo
+      // relançada logo depois.
+    });
+    deps.log?.error('llm: resolução da chamada falhou', {
+      organization_id: input.tenantId,
+      purpose,
+      provider,
+      model,
+      origem_da_escolha: origem,
+      ...normalizarErro(erro),
+    });
+  };
 
   // A config da org é lida ANTES da decisão porque o resolvedor precisa dela
   // como último degrau da precedência (o padrão, quando ninguém mais opinou).
-  const padrao = await resolveOrgLlmConfig(db, cfg, input.tenantId, input.llmOverride);
+  let padrao: Awaited<ReturnType<typeof resolveOrgLlmConfig>>;
+  try {
+    padrao = await resolveOrgLlmConfig(db, cfg, input.tenantId, input.llmOverride);
+  } catch (err) {
+    await registrarFalhaDeResolucao(err);
+    throw err;
+  }
 
   // O painel de provedores entra AQUI, e é o que faz `purpose` deixar de ser
   // só um rótulo de custo e virar decisão. Sem binding configurado, `decisao`
   // reproduz exatamente o comportamento anterior — a origem volta como
   // 'variavel_de_ambiente' ou 'padrao_da_organizacao'.
-  const decisao = await decidirParaOSeam(db, {
-    organizationId: input.tenantId,
-    purpose,
-    modeloDoCallSite: input.model,
-    overrideDoAgente:
-      input.llmOverride === undefined
-        ? null
-        : {
-            provider: input.llmOverride.provider ?? padrao.provider,
-            credentialId: input.llmOverride.credentialId ?? null,
-            model: input.model,
-          },
-    padraoDaOrganizacao: { provider: padrao.provider, defaultModel: padrao.defaultModel },
-  }, deps.log ? { log: deps.log } : {});
+  let decisao: Awaited<ReturnType<typeof decidirParaOSeam>>;
+  try {
+    decisao = await decidirParaOSeam(db, {
+      organizationId: input.tenantId,
+      purpose,
+      modeloDoCallSite: input.model,
+      overrideDoAgente:
+        input.llmOverride === undefined
+          ? null
+          : {
+              provider: input.llmOverride.provider ?? padrao.provider,
+              credentialId: input.llmOverride.credentialId ?? null,
+              model: input.model,
+            },
+      padraoDaOrganizacao: { provider: padrao.provider, defaultModel: padrao.defaultModel },
+    }, deps.log ? { log: deps.log } : {});
+  } catch (err) {
+    await registrarFalhaDeResolucao(err, {
+      provider: padrao.provider,
+      model: input.model ?? padrao.defaultModel,
+      origem: 'resolucao',
+    });
+    throw err;
+  }
 
   // Só re-resolve a credencial quando a decisão aponta para OUTRA que não a já
   // carregada — decifrar duas vezes a mesma chave é custo puro no caminho
@@ -544,32 +595,77 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
     decisao.provider !== padrao.provider ||
     (decisao.credentialId !== null && decisao.credentialId !== credencialJaCarregada);
 
-  const config = precisaOutraCredencial
-    ? await resolveOrgLlmConfig(db, cfg, input.tenantId, {
-        provider: decisao.provider,
-        credentialId: decisao.credentialId,
-      })
-    : padrao;
+  let config: Awaited<ReturnType<typeof resolveOrgLlmConfig>>;
+  try {
+    config = precisaOutraCredencial
+      ? await resolveOrgLlmConfig(db, cfg, input.tenantId, {
+          provider: decisao.provider,
+          credentialId: decisao.credentialId,
+        })
+      : padrao;
+  } catch (err) {
+    await registrarFalhaDeResolucao(err, {
+      provider: decisao.provider,
+      model: decisao.modelId ?? input.model,
+      origem: decisao.origem,
+    });
+    throw err;
+  }
 
   const model = decisao.modelId;
   if (model === null || model === undefined) {
-    throw new Error(
+    const erro = new Error(
       'modelo LLM não definido — configure o ponto no painel de provedores, ' +
         'organizations.settings.llm.default_model, ou passe input.model',
     );
+    await registrarFalhaDeResolucao(erro, {
+      provider: config.provider,
+      model: 'modelo_nao_definido',
+      origem: decisao.origem,
+    });
+    throw erro;
   }
   if (config.enabledModels.length > 0 && !config.enabledModels.includes(model)) {
-    throw new LlmModelNotEnabledError(model);
+    const erro = new LlmModelNotEnabledError(model);
+    await registrarFalhaDeResolucao(erro, {
+      provider: config.provider,
+      model,
+      origem: decisao.origem,
+    });
+    throw erro;
   }
   const factory = registry[config.provider];
   if (factory === undefined) {
-    throw new LlmProviderUnknownError(config.provider);
+    const erro = new LlmProviderUnknownError(config.provider);
+    await registrarFalhaDeResolucao(erro, {
+      provider: config.provider,
+      model,
+      origem: decisao.origem,
+    });
+    throw erro;
   }
   const parsedParams = paramsSchema.safeParse(config.params);
   if (!parsedParams.success) {
-    throw new Error('params inválidos em organizations.settings.llm.params — corrija a config da org');
+    const erro = new Error('params inválidos em organizations.settings.llm.params — corrija a config da org');
+    await registrarFalhaDeResolucao(erro, {
+      provider: config.provider,
+      model,
+      origem: decisao.origem,
+    });
+    throw erro;
   }
   const { temperature, topP, topK, maxOutputTokens } = parsedParams.data;
+
+  deps.log?.info('llm: configuração resolvida', {
+    organization_id: input.tenantId,
+    purpose,
+    provider: config.provider,
+    model,
+    origem_da_escolha: decisao.origem,
+    origem_da_chave: config.origemDaChave,
+    endpoint_proprio: Boolean(decisao.baseUrl),
+    enabled_models_count: config.enabledModels.length,
+  });
 
   // ═══ A CHAVE DA INSTALAÇÃO NÃO VAI PARA O ENDEREÇO DA EMPRESA ═══
   //
@@ -816,6 +912,27 @@ export function normalizarErro(err: unknown): {
   if (err instanceof LlmBudgetExceededError) {
     return { error_code: 'orcamento_esgotado', error_message: redigirMensagemDoProvedor(bruto), http_status: null };
   }
+  if (err instanceof LlmNotConfiguredError) {
+    return {
+      error_code: 'credencial_nao_configurada',
+      error_message: redigirMensagemDoProvedor(bruto),
+      http_status: null,
+    };
+  }
+  if (err instanceof LlmModelNotEnabledError) {
+    return {
+      error_code: 'modelo_nao_habilitado',
+      error_message: redigirMensagemDoProvedor(bruto),
+      http_status: null,
+    };
+  }
+  if (err instanceof LlmProviderUnknownError) {
+    return {
+      error_code: 'provedor_desconhecido',
+      error_message: redigirMensagemDoProvedor(bruto),
+      http_status: null,
+    };
+  }
   // A outra recusa nossa: endereço da empresa com a chave da instalação.
   if (err instanceof LlmEnderecoExigeChaveDaEmpresaError) {
     return {
@@ -867,12 +984,12 @@ export function redigirMensagemDoProvedor(bruto: string): string {
   const semSegredo = bruto
     // Chaves de API dos provedores que este produto fala: `sk-ant-…`,
     // `sk-or-v1-…`, `sk-proj-…`, `sk-…`, e as do Google (`AIza…`).
-    .replace(/sk-[A-Za-z0-9_-]{8,}/g, '[CHAVE]')
-    .replace(/AIza[A-Za-z0-9_-]{10,}/g, '[CHAVE]')
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, '[CHAVE]')
+    .replace(/\bAIza[A-Za-z0-9_-]{10,}/g, '[CHAVE]')
     // O header inteiro, em qualquer caixa, com ou sem `Authorization:` na
     // frente — é assim que ele costuma aparecer ecoado num corpo de erro.
-    .replace(/[Bb]earer\s+[A-Za-z0-9._-]{8,}/g, 'Bearer [CHAVE]')
-    .replace(/(x-api-key|api[-_]?key|authorization)\s*[:=]\s*\S+/gi, '$1: [CHAVE]');
+    .replace(/\b[Bb]earer\s+[A-Za-z0-9._-]{8,}/g, 'Bearer [CHAVE]')
+    .replace(/\b(x-api-key|api[-_]?key|authorization)\b\s*[:=]\s*\S+/gi, '$1: [CHAVE]');
   return scrubMessage(semSegredo).slice(0, 500);
 }
 

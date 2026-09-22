@@ -3,7 +3,7 @@
  * `ai_provider_credentials` do CRM (AES-256-GCM via lib/crypto/aes_gcm — colunas
  * api_key_encrypted/api_key_iv/api_key_tag) e os knobs de modelo/params vivem em
  * `organizations.settings->'llm'`. Sem BYOK, o fallback é a chave de plataforma
- * do env (ANTHROPIC_API_KEY ou OPENAI_API_KEY, conforme o provider). O plaintext da chave
+ * do env (ANTHROPIC_API_KEY, OPENAI_API_KEY ou OPENROUTER_API_KEY, conforme o provider). O plaintext da chave
  * existe apenas em memória do processo no instante da chamada; nunca em log.
  *
  * O TETO **não** mora mais no jsonb: desde a migration 0159 ele é
@@ -121,7 +121,7 @@ export class LlmNotConfiguredError extends Error {
   override readonly name = 'llm_not_configured';
   constructor() {
     super(
-      'org sem credencial LLM utilizável — cadastre uma chave BYOK ativa/validada em ai_provider_credentials ou defina ANTHROPIC_API_KEY / OPENAI_API_KEY (fallback de plataforma, conforme o provider do modelo)',
+      'org sem credencial LLM utilizável — cadastre uma chave BYOK ativa/validada em ai_provider_credentials ou defina ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY (fallback de plataforma, conforme o provider do modelo)',
     );
   }
 }

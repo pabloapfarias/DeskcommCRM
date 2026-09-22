@@ -18,11 +18,20 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { runModelCall } from "@/lib/agent-engine/edge/llm/run-model-call";
+import {
+  LlmModelNotEnabledError,
+  LlmNotConfiguredError,
+  LlmProviderUnknownError,
+  redigirMensagemDoProvedor,
+  runModelCall,
+} from "@/lib/agent-engine/edge/llm/run-model-call";
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 
-function poolQueGrava(paramsDaOrg: Record<string, unknown> = {}) {
+function poolQueGrava(
+  paramsDaOrg: Record<string, unknown> = {},
+  opts: { provider?: string; defaultModel?: string; enabledModels?: string[] } = {},
+) {
   const inserts: Array<{ sql: string; params: unknown[] }> = [];
   const query = vi.fn(async (sql: string, params: unknown[] = []) => {
     if (sql.includes("settings->'llm'")) {
@@ -30,10 +39,10 @@ function poolQueGrava(paramsDaOrg: Record<string, unknown> = {}) {
         rows: [
           {
             llm: {
-              provider: "anthropic",
-              default_model: "claude-padrao",
+              provider: opts.provider ?? "anthropic",
+              default_model: opts.defaultModel ?? "claude-padrao",
               params: paramsDaOrg,
-              enabled_models: [],
+              enabled_models: opts.enabledModels ?? [],
               monthly_budget_cents: null,
             },
           },
@@ -124,6 +133,42 @@ describe("a chamada que falha vira linha no log", () => {
     // "não sei" e não "de graça", a mesma doutrina de cost_cents.
     expect(linhaDeErro!.sql).toMatch(/0, 0, 0, 0, null/);
   });
+
+  it("registra falha de configuração antes de chegar ao provedor", async () => {
+    const { pool, inserts } = poolQueGrava({}, { enabledModels: ["outro-modelo"] });
+    await expect(
+      runModelCall(pool, cfg, {
+        tenantId: ORG,
+        purpose: "agent_preview",
+        messages: [{ role: "user", content: "oi" }],
+      }),
+    ).rejects.toBeInstanceOf(LlmModelNotEnabledError);
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]!.params).toContain("modelo_nao_habilitado");
+  });
+
+  it("registra credencial ausente e identifica OpenRouter sem esconder o provider", async () => {
+    const { pool, inserts } = poolQueGrava(
+      {},
+      {
+        provider: "openrouter",
+        defaultModel: "openai/gpt-4o-mini",
+      },
+    );
+    await expect(
+      runModelCall(pool, cfg, {
+        tenantId: ORG,
+        purpose: "agent_preview",
+        messages: [{ role: "user", content: "oi" }],
+        llmOverride: { provider: "openrouter" },
+      }),
+    ).rejects.toBeInstanceOf(LlmNotConfiguredError);
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]!.params).toContain("openrouter");
+    expect(inserts[0]!.params).toContain("credencial_nao_configurada");
+  });
 });
 
 describe("a classificação separa os problemas que exigem conversas diferentes", () => {
@@ -177,6 +222,11 @@ describe("a classificação separa os problemas que exigem conversas diferentes"
     const openai = await codigoDe(Object.assign(new Error("Incorrect API key"), { status: 401 }));
     expect(anthropic).toBe(openai);
   });
+
+  it("classifica falhas de configuração que acontecem antes da chamada", async () => {
+    expect(await codigoDe(new LlmModelNotEnabledError("modelo-x"))).toBe("modelo_nao_habilitado");
+    expect(await codigoDe(new LlmProviderUnknownError("provider-x"))).toBe("provedor_desconhecido");
+  });
 });
 
 describe("o que NUNCA pode entrar no log", () => {
@@ -213,6 +263,14 @@ describe("o que NUNCA pode entrar no log", () => {
       { registry: registryQueFalha(new Error("boom")) },
     ).catch(() => {});
     expect(JSON.stringify(inserts)).not.toContain(CHAVE_SENTINELA);
+  });
+
+  it("redige chave e bearer quando a mensagem de erro ecoa o header", () => {
+    const mensagem = redigirMensagemDoProvedor(
+      `Authorization: Bearer ${CHAVE_SENTINELA}; x-api-key=${CHAVE_SENTINELA}`,
+    );
+    expect(mensagem).not.toContain(CHAVE_SENTINELA);
+    expect(mensagem).toContain("[CHAVE]");
   });
 });
 

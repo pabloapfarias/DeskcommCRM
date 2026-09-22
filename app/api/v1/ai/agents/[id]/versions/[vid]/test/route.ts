@@ -37,6 +37,7 @@ import { avaliarRespostaDeTeste } from "@/lib/ai/agents/avaliar-resposta-de-test
 import { testAgentVersion } from "@/lib/agent-engine/agent/sandbox";
 import { requestTurnDeps } from "@/lib/agent-engine/agent/request-deps";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
+import { normalizarErro } from "@/lib/agent-engine/edge/llm/run-model-call";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { logger } from "@/lib/logger";
 
@@ -146,6 +147,17 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     return fail("internal_error", "Erro ao iniciar test run.", 500, { requestId });
   }
 
+  logger.info("[ai.test] iniciado", {
+    request_id: requestId,
+    run_id: runRow.id,
+    agent_id: id,
+    version_id: vid,
+    organization_id: activeOrg.orgId,
+    provider: version.provider,
+    model: version.model,
+    dry_run: true,
+  });
+
   let resultPayload: Record<string, unknown>;
 
   try {
@@ -188,34 +200,55 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       // um palpite.
       tool_calls: JSON.parse(JSON.stringify(result.proposals)),
     });
+    logger.info("[ai.test] concluído", {
+      request_id: requestId,
+      run_id: runRow.id,
+      agent_id: id,
+      version_id: vid,
+      organization_id: activeOrg.orgId,
+      provider: version.provider,
+      model: version.model,
+      status: resultPayload.status,
+      candidates: result.candidates.length,
+      proposals: result.proposals.length,
+      latency_ms: resultPayload.latency_ms,
+    });
   } catch (err) {
     // ⚠️ Este `catch` era vazio, e engolir o erro aqui é o que tornava o
     // problema INDIAGNOSTICÁVEL: o teste falhava, a tela dizia uma frase
     // genérica sobre modelo e credencial, e a causa real não existia em lugar
     // nenhum — nem no log, nem na linha do run, nem na resposta.
-    const mensagem = err instanceof Error ? err.message : String(err);
+    const diagnostico = normalizarErro(err);
     logger.error("[ai.test] o teste do agente falhou", {
       request_id: requestId,
       run_id: runRow.id,
       agent_id: id,
       version_id: vid,
       organization_id: activeOrg.orgId,
-      error: mensagem,
+      provider: version.provider,
+      model: version.model,
+      ...diagnostico,
     });
     await atualizarRun(admin, activeOrg.orgId, runRow.id, requestId, {
       status: "failed",
       completed_at: new Date().toISOString(),
       latency_ms: Date.now() - startedAt.getTime(),
-      error_code: "preview_failed",
+      error_code: diagnostico.error_code,
       // Guardado na linha para quem for diagnosticar depois; a resposta ao
       // operador segue genérica, porque o texto do erro é técnico.
-      error_message: mensagem.slice(0, 2000),
+      error_message: diagnostico.error_message,
     });
     return fail(
       "preview_failed",
       t("Não foi possível executar o teste. Confira modelo, credencial e materiais do agente."),
       422,
-      { requestId },
+      {
+        requestId,
+        details: {
+          run_id: runRow.id,
+          error_code: diagnostico.error_code,
+        },
+      },
     );
   }
 

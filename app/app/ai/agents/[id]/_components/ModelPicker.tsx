@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PROVEDORES } from "@/lib/ai/pontos/provedores";
+import type { PROVEDORES } from "@/lib/ai/pontos/provedores";
 import { useT } from "@/hooks/i18n/useT";
 
 /**
@@ -28,7 +28,11 @@ export interface ModelOption {
   display_name: string;
   context_window: number | null;
   is_default_for_provider: boolean;
+  /** Modelo salvo na versão, mas que ainda não aparece no catálogo local. */
+  current_only?: boolean;
 }
+
+const EMPTY_MODELS: ModelOption[] = [];
 
 interface Props {
   provider: Provider;
@@ -59,7 +63,23 @@ export function ModelPicker({ provider, value, onChange, disabled, id, placehold
     staleTime: 60_000,
   });
 
-  const models = query.data ?? [];
+  const models = query.data ?? EMPTY_MODELS;
+  const modeloAtualForaDoCatalogo =
+    value.trim() !== "" && models.length > 0 && !models.some((m) => m.model_id === value);
+  const opcoes = React.useMemo(() => {
+    if (!modeloAtualForaDoCatalogo) return models;
+    return [
+      {
+        provider,
+        model_id: value,
+        display_name: value,
+        context_window: null,
+        is_default_for_provider: false,
+        current_only: true,
+      },
+      ...models,
+    ];
+  }, [modeloAtualForaDoCatalogo, models, provider, value]);
 
   return (
     <div className="space-y-1">
@@ -76,7 +96,7 @@ export function ModelPicker({ provider, value, onChange, disabled, id, placehold
         <Select
           value={value || undefined}
           onValueChange={(v) => {
-            const m = models.find((m) => m.model_id === v);
+            const m = opcoes.find((m) => m.model_id === v);
             onChange(v, { contextWindow: m?.context_window ?? null });
           }}
           disabled={disabled || query.isLoading}
@@ -89,15 +109,34 @@ export function ModelPicker({ provider, value, onChange, disabled, id, placehold
             />
           </SelectTrigger>
           <SelectContent>
-            {models.map((m) => (
+            {opcoes.map((m) => (
               <SelectItem key={m.model_id} value={m.model_id}>
                 {m.display_name}
                 {m.is_default_for_provider ? ` · ${t("default")}` : ""}
+                {m.current_only ? ` · ${t("salvo fora do catálogo")}` : ""}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       )}
+      {query.isError ? (
+        <p className="text-xs text-destructive" role="status">
+          {t(
+            "Não foi possível carregar o catálogo de modelos. O identificador salvo ainda pode ser testado.",
+          )}
+        </p>
+      ) : null}
+      {modeloAtualForaDoCatalogo ? (
+        <p
+          className="text-xs text-amber-700 dark:text-amber-400"
+          role="status"
+          data-testid="modelo-fora-do-catalogo"
+        >
+          {t(
+            "O modelo salvo não está no catálogo atual. Ele continua disponível para esta versão até o catálogo ser atualizado.",
+          )}
+        </p>
+      ) : null}
     </div>
   );
 }

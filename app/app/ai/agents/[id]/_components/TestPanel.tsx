@@ -59,6 +59,12 @@ interface TestResponse {
   };
 }
 
+interface TestFailure {
+  errorCode: string;
+  runId: string | null;
+  requestId: string | null;
+}
+
 /**
  * O que as verificações disseram sobre a resposta — e o que elas NÃO puderam
  * dizer.
@@ -141,6 +147,7 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
   const [contactPhone, setContactPhone] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [result, setResult] = React.useState<TestResponse["data"] | null>(null);
+  const [failure, setFailure] = React.useState<TestFailure | null>(null);
 
   if (!target) {
     return (
@@ -163,6 +170,7 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
     if (!target) return;
     setPending(true);
     setResult(null);
+    setFailure(null);
     try {
       const body: Record<string, unknown> = { sample_message: message.trim() };
       if (contactName.trim() || contactPhone.trim()) {
@@ -191,8 +199,15 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
       toast.success(t("Teste executado."));
     } catch (err) {
       if (err instanceof ApiError) {
+        const errorCode =
+          typeof err.details?.error_code === "string" ? err.details.error_code : err.code;
+        const runId = typeof err.details?.run_id === "string" ? err.details.run_id : null;
+        setFailure({ errorCode, runId, requestId: err.requestId || null });
+        void qc.invalidateQueries({ queryKey: agentRunsKey(agent.id) });
         toast.error(t(err.message) || `${t("Erro")}: ${err.code}`);
       } else {
+        setFailure({ errorCode: "unknown_error", runId: null, requestId: null });
+        void qc.invalidateQueries({ queryKey: agentRunsKey(agent.id) });
         toast.error(t("Erro inesperado."));
       }
     } finally {
@@ -269,12 +284,29 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
           {t("Resultado")}
         </p>
 
-        {!result && !pending ? (
+        {!result && !failure && !pending ? (
           <p className="text-sm text-muted-foreground">{t("Nenhum teste executado ainda.")}</p>
         ) : null}
 
         {pending ? (
           <p className="text-sm text-muted-foreground">{t("Executando dry-run…")}</p>
+        ) : null}
+
+        {failure ? (
+          <div
+            className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm"
+            data-testid="teste-falha"
+          >
+            <p className="font-medium text-destructive">{t("O teste falhou.")}</p>
+            <dl className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+              <Cell label={t("Motivo")}>{failure.errorCode}</Cell>
+              <Cell label={t("Run ID")}>{failure.runId ?? "—"}</Cell>
+              <Cell label={t("Request ID")}>{failure.requestId ?? "—"}</Cell>
+            </dl>
+            <p className="text-xs text-muted-foreground">
+              {t("Abra Execuções para ver o diagnóstico completo registrado no log do modelo.")}
+            </p>
+          </div>
         ) : null}
 
         {result ? (
@@ -293,8 +325,8 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
                 {typeof result.latency_ms === "number" ? `${result.latency_ms}ms` : "—"}
               </Cell>
               <Cell label={t("Tokens in/out")}>
-                {result.tokens_in?.toLocaleString()??"—"} /{" "}
-                {result.tokens_out?.toLocaleString()??"—"}
+                {result.tokens_in?.toLocaleString() ?? "—"} /{" "}
+                {result.tokens_out?.toLocaleString() ?? "—"}
               </Cell>
               <Cell label={t("Custo (cents)")}>{result.cost_cents ?? "—"}</Cell>
             </div>

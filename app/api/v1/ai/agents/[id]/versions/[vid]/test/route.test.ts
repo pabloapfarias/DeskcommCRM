@@ -15,6 +15,12 @@ import { testAgentVersion } from "@/lib/agent-engine/agent/sandbox";
 import { requestTurnDeps } from "@/lib/agent-engine/agent/request-deps";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
 
+const logSpies = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
+
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
@@ -25,6 +31,7 @@ vi.mock("@/lib/agent-engine/agent/sandbox", () => ({
 }));
 vi.mock("@/lib/agent-engine/agent/request-deps", () => ({ requestTurnDeps: vi.fn() }));
 vi.mock("@/lib/agent-engine/db/request-pool", () => ({ getRequestPool: vi.fn() }));
+vi.mock("@/lib/logger", () => ({ logger: logSpies }));
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const USER = "11111111-1111-4111-8111-111111111111";
@@ -88,6 +95,9 @@ describe("POST .../versions/:vid/test — core compartilhado", () => {
 
   beforeEach(() => {
     atualizacoes.length = 0;
+    logSpies.info.mockReset();
+    logSpies.warn.mockReset();
+    logSpies.error.mockReset();
     const user: AuthUser = {
       id: USER,
       email: "a@example.com",
@@ -132,25 +142,48 @@ describe("POST .../versions/:vid/test — core compartilhado", () => {
     expect(res.status).toBe(422);
     expect(body.error).toMatchObject({
       code: "preview_failed",
-      message: "Não foi possível executar o teste. Confira modelo, credencial e materiais do agente.",
+      message:
+        "Não foi possível executar o teste. Confira modelo, credencial e materiais do agente.",
     });
     expect(body.error?.message).not.toContain("AI_GATEWAY_API_KEY");
+    expect(body.error).toMatchObject({
+      details: { run_id: "run-1", error_code: "erro_desconhecido" },
+    });
+    expect(logSpies.info).toHaveBeenCalledWith(
+      "[ai.test] iniciado",
+      expect.objectContaining({
+        run_id: "run-1",
+        provider: "anthropic",
+        model: "claude-sonnet-4-6",
+      }),
+    );
+    expect(logSpies.error).toHaveBeenCalledWith(
+      "[ai.test] o teste do agente falhou",
+      expect.objectContaining({
+        run_id: "run-1",
+        error_code: "erro_desconhecido",
+        error_message: "AI_GATEWAY_API_KEY ausente",
+      }),
+    );
     // ⚠️ `failed`, não `"error"`. Este teste cobrava `"error"` — e passava,
     // porque o mock do Supabase não tem o CHECK que o Postgres tem. No banco de
     // verdade o update era rejeitado com 23514 e o erro descartado, então o
     // teste verde e a produção quebrada conviviam. O vocabulário da coluna está
     // agora sob `tests/unit/teste-do-agente-usa-status-que-a-coluna-aceita.test.ts`,
     // que lê o CHECK do `baseline.sql` em vez de confiar num mock.
-    expect(atualizacoes).toContainEqual(expect.objectContaining({
-      status: "failed",
-      error_code: "preview_failed",
-    }));
+    expect(atualizacoes).toContainEqual(
+      expect.objectContaining({
+        status: "failed",
+        error_code: "erro_desconhecido",
+        error_message: "AI_GATEWAY_API_KEY ausente",
+      }),
+    );
   });
 });
 
 // Este teste isola o handler; autoridade de suporte é exercitada na suíte própria.
 vi.mock("@/lib/impersonate/support", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/impersonate/support")>(),
+  ...(await importOriginal<typeof import("@/lib/impersonate/support")>()),
   requireSupportWrite: vi.fn(async () => null),
   authenticatedSessionId: vi.fn(async () => "f2200000-0000-4000-8000-000000000099"),
 }));

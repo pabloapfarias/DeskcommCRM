@@ -1,0 +1,15 @@
+services:
+  app:
+    networks:
+      - internal
+      - supabase
+
+  worker:
+    networks:
+      - internal
+      - supabase
+
+networks:
+  supabase:
+    external: true
+    name: supabase_default
