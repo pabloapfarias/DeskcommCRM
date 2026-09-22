@@ -55,6 +55,7 @@ export default async function RouterEditorPage({ params }: { params: Promise<{ i
   const classifierModels = await listClassifierModels(supabase, activeOrg.orgId, {
     anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
+    commandcode: Boolean(process.env.COMMANDCODE_API_KEY),
   });
 
   const initialState: RouterDetailState = {

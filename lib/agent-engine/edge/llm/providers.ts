@@ -49,6 +49,8 @@ export const OPENROUTER_ENDPOINT = process.env.OPENROUTER_BASE_URL?.trim() || 'h
  * também aceita `/v1`); o `@ai-sdk/openai` acrescenta `/chat/completions`.
  */
 export const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com';
+/** Command Code oferece uma API OpenAI-compatível para os modelos do catálogo. */
+export const COMMANDCODE_ENDPOINT = process.env.COMMANDCODE_BASE_URL?.trim() || "https://api.commandcode.ai/provider/v1";
 
 /**
  * Cabeçalhos OPCIONAIS de atribuição da OpenRouter.
@@ -195,6 +197,15 @@ export function createDefaultRegistry(opts?: {
       const fetchFinal =
         opts?.deepseekThinking === 'disabled' ? comRaciocinioDesligado(contido) : contido;
       return createOpenAI({ apiKey, baseURL: endpoint, fetch: fetchFinal })(modelId);
+    },
+    /**
+     * Command Code Provider é OpenAI-compatível. O base_url do painel pode
+     * apontar para um gateway compatível, e o egress acompanha o destino
+     * escolhido pela organização.
+     */
+    commandcode: (apiKey, modelId, baseUrl) => {
+      const endpoint = baseUrl ?? COMMANDCODE_ENDPOINT;
+      return createOpenAI({ apiKey, baseURL: endpoint, fetch: contain(endpoint) })(modelId);
     },
   };
 }

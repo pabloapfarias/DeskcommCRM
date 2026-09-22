@@ -34,6 +34,7 @@ export interface ClassifierModelOption {
 /** Chaves de plataforma disponíveis, por provedor. */
 export interface PlatformKeys {
   anthropic: boolean;
+  commandcode?: boolean;
   openai: boolean;
 }
 
@@ -62,6 +63,9 @@ export async function listClassifierModels(
   }
   if (platformKeys.openai && !origemPorProvider.has("openai")) {
     origemPorProvider.set("openai", "plataforma");
+  }
+  if (platformKeys.commandcode && !origemPorProvider.has("commandcode")) {
+    origemPorProvider.set("commandcode", "plataforma");
   }
   if (origemPorProvider.size === 0) return [];
 

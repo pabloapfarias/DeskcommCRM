@@ -239,6 +239,30 @@ export async function validateDeepSeekKey(apiKey: string): Promise<ValidationRes
     return { ok: false, error: err instanceof Error ? err.name : "network_error" };
   }
 }
+/**
+ * Command Code Provider expõe /provider/v1/models na mesma forma de
+ * descoberta da API OpenAI. A listagem exige Bearer e, portanto, confirma a
+ * credencial; o resultado também alimenta models_available para diagnóstico.
+ */
+export async function validateCommandCodeKey(apiKey: string): Promise<ValidationResult> {
+  try {
+    const res = await timedFetch("https://api.commandcode.ai/provider/v1/models", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (res.status === 401) {
+      return { ok: false, error: "auth_failed_401" };
+    }
+    if (!res.ok) {
+      return { ok: false, error: `provider_status_${res.status}` };
+    }
+    const json = (await res.json()) as { data?: { id?: string }[] };
+    const models = (json.data ?? []).map((m) => m.id ?? "").filter(Boolean);
+    return { ok: true, models };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.name : "network_error" };
+  }
+}
 
 export function validateProviderKey(
   provider: Provider,
@@ -255,6 +279,8 @@ export function validateProviderKey(
       return validateOpenRouterKey(apiKey);
     case "deepseek":
       return validateDeepSeekKey(apiKey);
+    case "commandcode":
+      return validateCommandCodeKey(apiKey);
     default: {
       // Sem `never` aqui: `Provider` agora é derivado de PROVEDORES, e a lista
       // cresce sem que este arquivo saiba. Provedor novo cadastrado antes de

@@ -189,6 +189,10 @@ const schema = z.object({
   // por lá. Ver resolveLanguageModel() em lib/ai/gateway.ts.
   OPENROUTER_API_KEY: z.string().optional().default(""),
   OPENROUTER_BASE_URL: z.string().optional().default(""),
+  // Command Code Provider — OpenAI-compatível. Opcional; a organização pode
+  // cadastrar a chave cifrada em IA › Credenciais.
+  COMMANDCODE_API_KEY: z.string().optional().default(""),
+  COMMANDCODE_BASE_URL: z.string().optional().default(""),
   // Atribuição OPCIONAL da OpenRouter (`HTTP-Referer` / `X-Title`): identifica a
   // instalação no painel e no ranking público DELES. A doc da OpenRouter chama
   // os dois de opcionais e a chamada funciona sem — por isso default vazio e
@@ -527,11 +531,12 @@ if (
   !env.AI_GATEWAY_API_KEY &&
   !env.ANTHROPIC_API_KEY &&
   !env.OPENROUTER_API_KEY &&
-  !env.OPENAI_API_KEY
+  !env.OPENAI_API_KEY &&
+  !env.COMMANDCODE_API_KEY
 ) {
   console.warn(
     "[env] Nenhuma chave de IA configurada no ambiente " +
-      "(AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY ou OPENAI_API_KEY). " +
+      "(AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY ou COMMANDCODE_API_KEY). " +
       "Isto não prova que o agente está sem credencial: cada organização pode ter uma chave " +
       "cadastrada em IA › Credenciais. A falta real só é conhecida quando a resolução completa " +
       "do turno não encontra chave em nenhum degrau.",

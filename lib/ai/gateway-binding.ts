@@ -27,6 +27,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 
 import { DEEPSEEK_ENDPOINT } from "@/lib/agent-engine/edge/llm/providers";
+import { COMMANDCODE_ENDPOINT } from "@/lib/agent-engine/edge/llm/providers";
 import { decryptKey, byteaToBuffer } from "@/lib/crypto/aes_gcm";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -163,6 +164,7 @@ async function lerBinding(
  */
 function idParaOProvider(provider: string, id: string): string | null {
   if (provider === "openrouter") return id;
+  if (provider === "commandcode") return id;
   if (!id.includes("/")) return id;
   if (id.startsWith(`${provider}/`)) return id.slice(provider.length + 1);
   return null;
@@ -201,9 +203,10 @@ async function padraoDaInstalacao(
 ): Promise<LanguageModel | null> {
   const peloId = resolveLanguageModel(padrao);
   if (peloId !== null) return peloId;
-  const id = String(padrao);
-  if (id.includes("/")) return null;
   const provider = await providerDaConfiguracao();
+  const id = String(padrao);
+  if (provider === "commandcode") return resolveLanguageModel(`commandcode/${id}`);
+  if (id.includes("/")) return null;
   if (provider === null || provider === "openrouter") return null;
   return resolveLanguageModel(`${provider}/${id}`);
 }
@@ -369,6 +372,8 @@ function instanciar(
     // padrão com aviso — a tela ofereceria um provedor que estes workers ignoram.
     case "deepseek":
       return createOpenAI({ apiKey, baseURL: baseUrl ?? DEEPSEEK_ENDPOINT })(modelId);
+    case "commandcode":
+      return createOpenAI({ apiKey, baseURL: baseUrl ?? COMMANDCODE_ENDPOINT })(modelId);
     default:
       return null;
   }

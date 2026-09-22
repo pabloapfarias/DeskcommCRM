@@ -132,6 +132,7 @@ export async function GET(req: NextRequest) {
 }
 
 function chaveDoAmbiente(provider: string): string {
+  if (provider === "commandcode") return "COMMANDCODE_API_KEY";
   return (
     { anthropic: "ANTHROPIC_API_KEY", openai: "OPENAI_API_KEY", openrouter: "OPENROUTER_API_KEY" }[
       provider

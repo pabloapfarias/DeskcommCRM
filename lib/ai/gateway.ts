@@ -16,10 +16,12 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 
 import { env } from "@/lib/env";
+import { COMMANDCODE_ENDPOINT } from "@/lib/agent-engine/edge/llm/providers";
 
 /** Endpoint da OpenRouter. Compatível com a API da OpenAI, então o provider
  *  `@ai-sdk/openai` fala com ela sem dependência nova. */
 export const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1";
+export const COMMANDCODE_BASE_URL = process.env.COMMANDCODE_BASE_URL?.trim() || COMMANDCODE_ENDPOINT;
 
 export type ModelId =
   | "anthropic/claude-sonnet-5"
@@ -37,7 +39,8 @@ export function isAiGatewayConfigured(): boolean {
   return (
     Boolean(env.AI_GATEWAY_API_KEY) ||
     Boolean(env.OPENROUTER_API_KEY) ||
-    Boolean(env.ANTHROPIC_API_KEY)
+    Boolean(env.ANTHROPIC_API_KEY) ||
+    Boolean(env.COMMANDCODE_API_KEY)
   );
 }
 
@@ -70,6 +73,13 @@ export function resolveLanguageModel(model: ModelId): LanguageModel | null {
   const id = String(model);
 
   if (gatewayConfig()) return id as LanguageModel;
+
+  if (id.startsWith("commandcode/") && env.COMMANDCODE_API_KEY) {
+    return createOpenAI({
+      apiKey: env.COMMANDCODE_API_KEY,
+      baseURL: env.COMMANDCODE_BASE_URL || COMMANDCODE_BASE_URL,
+    })(id.slice("commandcode/".length));
+  }
 
   if (env.OPENROUTER_API_KEY) {
     return createOpenAI({

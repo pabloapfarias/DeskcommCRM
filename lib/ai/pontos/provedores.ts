@@ -93,6 +93,20 @@ export const PROVEDORES = [
     ondePegarAChave: "https://platform.deepseek.com/api_keys",
     prefixoDaChave: "sk-…",
   },
+  {
+    id: "commandcode",
+    rotulo: "Command Code",
+    quandoUsar:
+      "API compatível com OpenAI para acessar modelos de vários fabricantes com limites mais adequados para uso contínuo do agente.",
+    aceitaEndpointProprio: true,
+    // O endpoint de modelos exige credencial e ainda não há sincronizador global
+    // para esta fonte. Até existir essa rotina, o modelo é informado no seletor
+    // manual — declarar catálogo sincronizável aqui prometeria um cron que não
+    // existe.
+    catalogoSincronizavel: false,
+    ondePegarAChave: "https://commandcode.ai/settings/keys",
+    prefixoDaChave: "Chave do Command Code",
+  },
 ] as const satisfies readonly ProvedorSuportado[];
 // `as const satisfies` e não anotação de tipo: a anotação apagaria os literais
 // e `Provider` viraria `string`, deixando o compilador aceitar qualquer texto

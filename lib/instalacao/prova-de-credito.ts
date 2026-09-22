@@ -22,6 +22,7 @@ import { normalizarErro } from "@/lib/agent-engine/edge/llm/run-model-call";
 import {
   cabecalhosDeAtribuicaoOpenRouter,
   DEEPSEEK_ENDPOINT,
+  COMMANDCODE_ENDPOINT,
   OPENROUTER_ENDPOINT,
 } from "@/lib/agent-engine/edge/llm/providers";
 
@@ -100,6 +101,13 @@ export function montarRequisicaoDeProva(
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
         body: { model: modelo, max_tokens: 1, messages: msg },
       };
+    case "commandcode":
+      return {
+        url: `${baseUrl ?? COMMANDCODE_ENDPOINT}/chat/completions`,
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: { model: modelo, max_tokens: 1, messages: msg },
+      };
+
     case "google":
       return {
         url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
