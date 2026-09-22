@@ -30,7 +30,7 @@ services:
           echo "node_modules ausente; execute pnpm install --frozen-lockfile no CT."
           exit 1
         fi
-        exec /app/node_modules/.bin/next dev --hostname 0.0.0.0 --port 3000
+        exec /app/node_modules/.bin/next dev --webpack --hostname 0.0.0.0 --port 3000
     volumes:
       - .:/app
       - ./node_modules:/app/node_modules:ro
@@ -38,10 +38,9 @@ services:
     environment:
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
-    # O Next/Turbopack em modo desenvolvimento recompila rotas sob demanda e
-    # pode ultrapassar 2 GiB durante uma sessão de trabalho. O CT tem memória
-    # disponível; mantenha folga para evitar OOM e 502 no proxy.
-    mem_limit: 8g
+    # O Next em modo desenvolvimento recompila rotas sob demanda; mantenha
+    # folga para as compilações simultâneas sem derrubar o proxy com 502.
+    mem_limit: 12g
 
   worker:
     build:
