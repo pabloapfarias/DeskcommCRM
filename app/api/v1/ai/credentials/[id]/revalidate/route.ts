@@ -14,6 +14,7 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { byteaToBuffer, decryptKey } from "@/lib/crypto/aes_gcm";
 import { validateProviderKey } from "@/lib/ai/provider-validators";
+import { sincronizarCatalogoCommandCode } from "@/lib/ai/catalogo/sincronizar-commandcode";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -102,6 +103,16 @@ export async function POST(
 
   if (updErr || !updated) {
     return fail("internal_error", "Erro ao atualizar credential.", 500, { requestId });
+  }
+
+  if (result.ok && row.provider === "commandcode") {
+    await sincronizarCatalogoCommandCode(admin, apiKey).catch((err) =>
+      logger.warn("[ai.credentials] catálogo Command Code não sincronizado após revalidação", {
+        credential_id: id,
+        organization_id: activeOrg.orgId,
+        erro: err instanceof Error ? err.message : String(err),
+      }),
+    );
   }
 
   await audit({

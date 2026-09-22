@@ -200,12 +200,18 @@ export function createDefaultRegistry(opts?: {
     },
     /**
      * Command Code Provider é OpenAI-compatível. O base_url do painel pode
-     * apontar para um gateway compatível, e o egress acompanha o destino
-     * escolhido pela organização.
+     * apontar para um gateway compatível, e o egress acompanha o destino.
+     *
+     * O caminho padrão createOpenAI(...)(modelId) é a Responses API na
+     * versão atual da SDK. O Provider API do Command Code recebe agentes e
+     * tool-calls pelo contrato Chat Completions; usar Responses aqui fazia o
+     * primeiro tool-call sair, mas quebrava a segunda mensagem com o resultado
+     * da ferramenta. .chat() mantém a conversa no wire documentado pelo
+     * provedor e preserva a fita assistant/tool completa.
      */
     commandcode: (apiKey, modelId, baseUrl) => {
       const endpoint = baseUrl ?? COMMANDCODE_ENDPOINT;
-      return createOpenAI({ apiKey, baseURL: endpoint, fetch: contain(endpoint) })(modelId);
+      return createOpenAI({ apiKey, baseURL: endpoint, fetch: contain(endpoint) }).chat(modelId);
     },
   };
 }

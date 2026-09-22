@@ -21,6 +21,8 @@
 import { audit } from "@/lib/audit";
 import { bufToBytea, encryptKey } from "@/lib/crypto/aes_gcm";
 import { validateProviderKey, type Provider } from "@/lib/ai/provider-validators";
+import { sincronizarCatalogoCommandCode } from "@/lib/ai/catalogo/sincronizar-commandcode";
+import { logger } from "@/lib/logger";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 export type ResultadoDeGuardar =
@@ -244,6 +246,16 @@ async function validarEmSegundoPlano(
       )
       .eq("id", credentialId)
       .eq("organization_id", organizationId);
+
+    if (r.ok && provider === "commandcode") {
+      await sincronizarCatalogoCommandCode(admin, apiKey).catch((err) =>
+        logger.warn("[ai.credentials] catálogo Command Code não sincronizado", {
+          credential_id: credentialId,
+          organization_id: organizationId,
+          erro: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
   } catch {
     // Falha de rede na validação não pode derrubar nada: a credencial existe e
     // o campo `validated_at` continua nulo, que é a leitura honesta de "ainda

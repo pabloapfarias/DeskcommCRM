@@ -99,11 +99,10 @@ export const PROVEDORES = [
     quandoUsar:
       "API compatível com OpenAI para acessar modelos de vários fabricantes com limites mais adequados para uso contínuo do agente.",
     aceitaEndpointProprio: true,
-    // O endpoint de modelos exige credencial e ainda não há sincronizador global
-    // para esta fonte. Até existir essa rotina, o modelo é informado no seletor
-    // manual — declarar catálogo sincronizável aqui prometeria um cron que não
-    // existe.
-    catalogoSincronizavel: false,
+    // A resposta /models é autenticada e é reconciliada em ai_models quando a
+    // credencial é validada/revalidada. O cron continua sendo opcional: uma
+    // chave da organização já basta para a primeira sincronização.
+    catalogoSincronizavel: true,
     ondePegarAChave: "https://commandcode.ai/settings/keys",
     prefixoDaChave: "Chave do Command Code",
   },
